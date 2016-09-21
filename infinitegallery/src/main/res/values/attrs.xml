@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <declare-styleable name="InfiniteGallery">
+        <attr name="poster_width" format="dimension|reference" />
+        <attr name="poster_height" format="dimension|reference" />
+    </declare-styleable>
+
+</resources>
