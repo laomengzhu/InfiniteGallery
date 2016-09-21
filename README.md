@@ -1,2 +1,2 @@
-# PosterGallery
-A simple poster gallery
+# InfiniteGallery
+A infinite gallery widget.
