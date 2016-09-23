@@ -1,8 +1,6 @@
 package com.laomengzhu.infinitegallery;
 
 import android.animation.Animator;
-import android.animation.AnimatorSet;
-import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -11,33 +9,31 @@ import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
-
-import java.util.ArrayList;
 
 /**
  * Created by xiaolifan on 2016/9/21.
  */
 
-public class InfiniteGallery extends FrameLayout {
+public class InfiniteGallery extends FrameLayout implements ValueAnimator.AnimatorUpdateListener {
 
-    private static final int DEFAULT_POSTER_WIDTH = 160;
-    private static final int DEFAULT_POSTER_HEIGHT = 90;
     private static final int PREDICT_CHILD_COUNT = 5;
 
-    private float mRatio = 0.84f;
+    private int itemWidth;
+    private int itemHeight;
+    private int itemCount = 0;
+    private int itemMargin;
+    private int mCenterViewPosition = 0;
+    private int mAnimatorDuration = 600;
+
+    private SignedValueAnimator mScrollAnimator = SignedValueAnimator.ofFloat(0, 1.0f);
+    private View exitView;
+    private View enterView;
+    private GalleryTransformer mTransformer;
+
     private GalleryViewFactory factory;
     private GalleryChangeListener changeListener;
-    private int posterWidth;
-    private int posterHeight;
-    private int posterCount = 0;
-    private int mCenterViewPosition = 0;
-
-    // animators
-    private AnimatorSet mAnimatorSet;
-    private ArrayList<ObjectAnimator> animators = new ArrayList<ObjectAnimator>(PREDICT_CHILD_COUNT);
-    private ObjectAnimator enterScaleXAnimator, enterScaleYAnimator;
-    private ObjectAnimator exitScaleXAnimator, exitScaleYAnimator;
 
     @SuppressLint("NewApi")
     public InfiniteGallery(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
@@ -63,41 +59,54 @@ public class InfiniteGallery extends FrameLayout {
     public void initAttrs(Context context, AttributeSet attrs) {
         setFocusable(true);
         setFocusableInTouchMode(true);
-        if (attrs == null || isInEditMode()) {
-            posterWidth = DEFAULT_POSTER_WIDTH;
-            posterHeight = DEFAULT_POSTER_HEIGHT;
-            return;
-        }
-        if (isInEditMode()) {
-            factory = new PreViewFactory(context);
-            setPosterCount(3);
+        if (attrs == null) {
+            itemWidth = 0;
+            itemHeight = 0;
             return;
         }
 
         TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.InfiniteGallery);
         int resId = -1;
 
-        // poster width
-        resId = ta.getResourceId(R.styleable.InfiniteGallery_poster_width, -1);
+        // item width
+        resId = ta.getResourceId(R.styleable.InfiniteGallery_item_width, -1);
         if (resId == -1) {
-            posterWidth = ta.getDimensionPixelSize(R.styleable.InfiniteGallery_poster_width, DEFAULT_POSTER_WIDTH);
+            itemWidth = ta.getDimensionPixelSize(R.styleable.InfiniteGallery_item_width, 0);
         } else {
-            posterWidth = getResources().getDimensionPixelSize(resId);
+            itemWidth = getResources().getDimensionPixelSize(resId);
         }
-        // poster height
-        resId = ta.getResourceId(R.styleable.InfiniteGallery_poster_height, -1);
+        // item height
+        resId = ta.getResourceId(R.styleable.InfiniteGallery_item_height, -1);
         if (resId == -1) {
-            posterHeight = ta.getDimensionPixelSize(R.styleable.InfiniteGallery_poster_height, DEFAULT_POSTER_HEIGHT);
+            itemHeight = ta.getDimensionPixelSize(R.styleable.InfiniteGallery_item_height, 0);
         } else {
-            posterHeight = getResources().getDimensionPixelSize(resId);
+            itemHeight = getResources().getDimensionPixelSize(resId);
         }
+        // item margin
+        resId = ta.getResourceId(R.styleable.InfiniteGallery_itemMargin, -1);
+        if (resId == -1) {
+            itemMargin = ta.getDimensionPixelSize(R.styleable.InfiniteGallery_itemMargin, 0);
+        } else {
+            itemMargin = getResources().getDimensionPixelSize(resId);
+        }
+        // animator duration
+        mAnimatorDuration = ta.getInteger(R.styleable.InfiniteGallery_animatorDuration, 600);
 
         ta.recycle();
+
+        if (isInEditMode()) {
+            factory = new PreViewFactory(context);
+            setItemCount(3);
+        }
+
+        mScrollAnimator.addUpdateListener(this);
+        mScrollAnimator.addListener(animatorListener);
+        mScrollAnimator.setDuration(mAnimatorDuration);
     }
 
     private void setupChildViews() {
         removeAllViews();
-        int childCount = posterCount > 1 ? PREDICT_CHILD_COUNT : posterCount;
+        int childCount = itemCount > 1 ? PREDICT_CHILD_COUNT : itemCount;
         if (childCount < 1) {
             return;
         }
@@ -107,52 +116,78 @@ public class InfiniteGallery extends FrameLayout {
         View centerChildView = null;
         LayoutParams lp;
         for (int i = 0; i < childCount; i++) {
-            childView = factory.makeView();
+            childView = factory.createView();
             childView.setTag(R.id.poster_info_tag, new ItemInfo(i, getDataPosition(i)));
-            lp = new LayoutParams(posterWidth, posterHeight);
+            lp = new LayoutParams(itemWidth, itemHeight);
             lp.gravity = Gravity.CENTER;
             addView(childView, lp);
             factory.bindView(getDataPosition(i), childView);
 
             if (i == mCenterViewPosition) {
                 centerChildView = childView;
-                childView.setScaleX(1.0f);
-                childView.setScaleY(1.0f);
             } else {
                 if (i < mCenterViewPosition) {
-                    // childView.setRotationY(30);
-                    childView.setTranslationX(-(1 + Math.abs(Math.abs(i - mCenterViewPosition) - 1)) * posterWidth
-                            * mRatio);
+                    childView.setTranslationX(-(1 + Math.abs(Math.abs(i - mCenterViewPosition) - 1)) * (itemWidth
+                            + itemMargin));
                 } else {
-                    // childView.setRotationY(-30);
-                    childView.setTranslationX((1 + Math.abs(Math.abs(i - mCenterViewPosition) - 1)) * posterWidth
-                            * mRatio);
+                    childView.setTranslationX((1 + Math.abs(Math.abs(i - mCenterViewPosition) - 1)) * (itemWidth
+                            + itemMargin));
                 }
-                childView.setScaleX(mRatio);
-                childView.setScaleY(mRatio);
             }
         }
         if (centerChildView != null) {
             centerChildView.bringToFront();
         }
+
+        if (mTransformer == null) {
+            return;
+        }
+        ItemInfo info;
+        for (int i = 0; i < PREDICT_CHILD_COUNT; i++) {
+            childView = getChildAt(i);
+            info = (ItemInfo) childView.getTag(R.id.poster_info_tag);
+            if (info.getViewPosition() < mCenterViewPosition) {
+                mTransformer.process(centerChildView, childView, -1);
+            } else if (info.getViewPosition() > mCenterViewPosition) {
+                mTransformer.process(centerChildView, childView, 1);
+            }
+        }
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        super.onMeasure(MeasureSpec.makeMeasureSpec((int) (posterWidth * mRatio * 3), MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(posterHeight, MeasureSpec.EXACTLY));
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        int realWidthMeasureSpec = 0;
+        int realHeightMeasureSpec = 0;
+        if (itemWidth <= 0) {
+            itemWidth = (getMeasuredWidth() - getPaddingLeft() - getPaddingRight() - 2 * itemMargin) / 3;
+        } else if (getMeasuredWidth() < (itemWidth * 3) + getPaddingLeft() + getPaddingRight() + 2 * itemMargin) {
+            realWidthMeasureSpec = MeasureSpec.makeMeasureSpec((int) (itemWidth * 3) + getPaddingLeft()
+                    + getPaddingRight() + 2 * itemMargin, MeasureSpec.EXACTLY);
+        }
+        if (itemHeight <= 0) {
+            itemHeight = getMeasuredHeight() - getPaddingTop() - getPaddingBottom();
+        } else if (getMeasuredHeight() < itemHeight + getPaddingTop() + getPaddingBottom()) {
+            realHeightMeasureSpec = MeasureSpec.makeMeasureSpec(itemHeight + getPaddingTop() + getPaddingBottom(),
+                    MeasureSpec.EXACTLY);
+        }
+
+        if (realWidthMeasureSpec != 0 || realHeightMeasureSpec != 0) {
+            super.onMeasure(realWidthMeasureSpec == 0 ? widthMeasureSpec : realWidthMeasureSpec,
+                    realHeightMeasureSpec == 0 ? heightMeasureSpec : realHeightMeasureSpec);
+        }
     }
 
     private int getDataPosition(int position) {
         int realPosition = position - 2;
         if (realPosition < 0) {
             do {
-                realPosition += posterCount;
+                realPosition += itemCount;
             } while (realPosition < 0);
-        } else if (realPosition > (posterCount - 1)) {
+        } else if (realPosition > (itemCount - 1)) {
             do {
-                realPosition -= posterCount;
-            } while (realPosition > (posterCount - 1));
+                realPosition -= itemCount;
+            } while (realPosition > (itemCount - 1));
         }
         return realPosition;
     }
@@ -165,41 +200,34 @@ public class InfiniteGallery extends FrameLayout {
         changeListener = listener;
     }
 
-    public interface GalleryViewFactory {
-        View makeView();
-
-        /**
-         * @param dataPosition the data index
-         * @param view         view to fill data
-         */
-        void bindView(int dataPosition, View view);
-    }
-
-    public interface GalleryChangeListener {
-        void onBeginSelectGallery(View itemView);
-
-        void onEndSelectGallery(View itemView);
-
-        /**
-         * @param enterItemView view will scroll to center
-         * @param exitItemView  view will scroll out from center
-         * @param progress      between 0 and 1, scroll left &lt; 0, scroll right &gt; 0
-         */
-        void onSelecting(View enterItemView, View exitItemView, float progress);
+    public void setTransformer(GalleryTransformer transformer) {
+        this.mTransformer = transformer;
     }
 
     /**
      * @return true means children views has reset and will invoke bind view auto; false means do nothing, you should
      * invoke notifyDataSetChange to refresh data if you need
      */
-    public boolean setPosterCount(int posterCount) {
+    public boolean setItemCount(int itemCount) {
         if (factory == null) {
             throw new IllegalStateException("GalleryViewFactory has not set");
         }
-        int oldPosterCount = this.posterCount;
-        this.posterCount = posterCount;
-        if (needReSetupChildViews(oldPosterCount, posterCount)) {
-            setupChildViews();
+        int oldItemCount = this.itemCount;
+        this.itemCount = itemCount;
+        if (needReSetupChildViews(oldItemCount, itemCount)) {
+            if (itemWidth > 0 && itemHeight > 0) {
+                setupChildViews();
+            } else {
+                getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+
+                    @SuppressWarnings("deprecation")
+                    @Override
+                    public void onGlobalLayout() {
+                        getViewTreeObserver().removeGlobalOnLayoutListener(this);
+                        setupChildViews();
+                    }
+                });
+            }
             return true;
         } else {
             return false;
@@ -223,18 +251,18 @@ public class InfiniteGallery extends FrameLayout {
         }
     }
 
-    private boolean needReSetupChildViews(int oldPosterCount, int newPosterCount) {
-        int oldChildCount = oldPosterCount > 1 ? PREDICT_CHILD_COUNT : oldPosterCount;
-        int newChildCount = newPosterCount > 1 ? PREDICT_CHILD_COUNT : newPosterCount;
+    private boolean needReSetupChildViews(int oldItemCount, int newItemCount) {
+        int oldChildCount = oldItemCount > 1 ? PREDICT_CHILD_COUNT : oldItemCount;
+        int newChildCount = newItemCount > 1 ? PREDICT_CHILD_COUNT : newItemCount;
         return oldChildCount != newChildCount;
     }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && posterCount > 1) {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && itemCount > 1) {
             moveLeft();
             return true;
-        } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && posterCount > 1) {
+        } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && itemCount > 1) {
             moveRight();
             return true;
         }
@@ -242,139 +270,70 @@ public class InfiniteGallery extends FrameLayout {
     }
 
     private void moveRight() {
-        if (mAnimatorSet != null && mAnimatorSet.isRunning()) {
-            mAnimatorSet.end();
+        if (mScrollAnimator != null && mScrollAnimator.isRunning()) {
+            mScrollAnimator.end();
         }
+        mScrollAnimator.setDirection(SignedValueAnimator.DIRECTION_RIGHT);
         int newCenterViewPosition = mCenterViewPosition - 1;
         if (newCenterViewPosition > (PREDICT_CHILD_COUNT - 1)) {
             newCenterViewPosition -= PREDICT_CHILD_COUNT;
         } else if (newCenterViewPosition < 0) {
             newCenterViewPosition += PREDICT_CHILD_COUNT;
         }
-        ObjectAnimator animator;
         View childView;
-        View targetView = null;
+        ItemInfo info;
         for (int i = 0; i < PREDICT_CHILD_COUNT; i++) {
             childView = getChildAt(i);
-            if (getItemViewPosition(childView) == newCenterViewPosition) {
-                targetView = childView;
-                setupEnterScaleAnimators(childView);
-            } else if (getItemViewPosition(childView) == mCenterViewPosition) {
-                setupExitScaleAnimator(childView);
+            info = (ItemInfo) childView.getTag(R.id.poster_info_tag);
+            if (info.getViewPosition() == newCenterViewPosition) {
+                enterView = childView;
+            } else if (info.getViewPosition() == mCenterViewPosition) {
+                exitView = childView;
             }
-            animator = null;
-            if (animators.size() > i) {
-                animator = animators.get(i);
-            }
-            if (animator == null) {
-                animator = ObjectAnimator.ofFloat(childView, View.TRANSLATION_X, childView.getTranslationX(),
-                        childView.getTranslationX() + posterWidth * mRatio);
-                animators.add(i, animator);
-            } else {
-                animator.setTarget(childView);
-                animator.setFloatValues(childView.getTranslationX(),
-                        childView.getTranslationX() + posterWidth * mRatio);
-            }
+            info.setAnimatorStartValue(childView.getTranslationX());
+            info.setAnimatorEndValue(childView.getTranslationX() + itemWidth + itemMargin);
         }
-        setupAnimatorSet();
-        if (targetView != null) {
-            targetView.bringToFront();
+        if (enterView != null) {
+            enterView.bringToFront();
         }
-        mAnimatorSet.start();
+        mScrollAnimator.start();
         mCenterViewPosition = newCenterViewPosition;
+        if (changeListener != null) {
+            changeListener.onBeginSelectGallery(enterView);
+        }
     }
 
     private void moveLeft() {
-        if (mAnimatorSet != null && mAnimatorSet.isRunning()) {
-            mAnimatorSet.end();
+        if (mScrollAnimator != null && mScrollAnimator.isRunning()) {
+            mScrollAnimator.end();
         }
+        mScrollAnimator.setDirection(SignedValueAnimator.DIRECTION_LEFT);
         int newCenterViewPosition = mCenterViewPosition + 1;
         if (newCenterViewPosition > (PREDICT_CHILD_COUNT - 1)) {
             newCenterViewPosition -= PREDICT_CHILD_COUNT;
         } else if (newCenterViewPosition < 0) {
             newCenterViewPosition += PREDICT_CHILD_COUNT;
         }
-        ObjectAnimator animator;
         View childView;
-        View targetView = null;
+        ItemInfo info;
         for (int i = 0; i < PREDICT_CHILD_COUNT; i++) {
             childView = getChildAt(i);
-            if (getItemViewPosition(childView) == newCenterViewPosition) {
-                targetView = childView;
-                setupEnterScaleAnimators(childView);
-            } else if (getItemViewPosition(childView) == mCenterViewPosition) {
-                setupExitScaleAnimator(childView);
+            info = (ItemInfo) childView.getTag(R.id.poster_info_tag);
+            if (info.getViewPosition() == newCenterViewPosition) {
+                enterView = childView;
+            } else if (info.getViewPosition() == mCenterViewPosition) {
+                exitView = childView;
             }
-            animator = null;
-            if (animators.size() > i) {
-                animator = animators.get(i);
-            }
-            if (animator == null) {
-                animator = ObjectAnimator.ofFloat(childView, View.TRANSLATION_X, childView.getTranslationX(),
-                        childView.getTranslationX() - posterWidth * mRatio);
-                animators.add(i, animator);
-            } else {
-                animator.setTarget(childView);
-                animator.setFloatValues(childView.getTranslationX(),
-                        childView.getTranslationX() - posterWidth * mRatio);
-            }
+            info.setAnimatorStartValue(childView.getTranslationX());
+            info.setAnimatorEndValue(childView.getTranslationX() - (itemWidth + itemMargin));
         }
-        setupAnimatorSet();
-        if (targetView != null) {
-            targetView.bringToFront();
+        if (enterView != null) {
+            enterView.bringToFront();
         }
-        mAnimatorSet.start();
-        ValueAnimator animator2 = ValueAnimator.ofFloat(0, 1.0f);
+        mScrollAnimator.start();
         mCenterViewPosition = newCenterViewPosition;
-    }
-
-    private int getItemViewPosition(View itemView) {
-        ItemInfo info = (ItemInfo) itemView.getTag(R.id.poster_info_tag);
-        return info.getViewPosition();
-    }
-
-    private void setupExitScaleAnimator(View childView) {
-        if (exitScaleXAnimator == null) {
-            exitScaleXAnimator = ObjectAnimator.ofFloat(childView, View.SCALE_X, childView.getScaleX(), mRatio);
-        } else {
-            exitScaleXAnimator.setTarget(childView);
-            exitScaleXAnimator.setFloatValues(childView.getScaleX(), mRatio);
-        }
-        if (exitScaleYAnimator == null) {
-            exitScaleYAnimator = ObjectAnimator.ofFloat(childView, View.SCALE_Y, childView.getScaleY(), mRatio);
-        } else {
-            exitScaleYAnimator.setTarget(childView);
-            exitScaleYAnimator.setFloatValues(childView.getScaleY(), mRatio);
-        }
-    }
-
-    private void setupEnterScaleAnimators(View childView) {
-        if (enterScaleXAnimator == null) {
-            enterScaleXAnimator = ObjectAnimator.ofFloat(childView, View.SCALE_X, childView.getScaleX(), 1.0f);
-        } else {
-            enterScaleXAnimator.setTarget(childView);
-            enterScaleXAnimator.setFloatValues(childView.getScaleX(), 1.0f);
-        }
-        if (enterScaleYAnimator == null) {
-            enterScaleYAnimator = ObjectAnimator.ofFloat(childView, View.SCALE_Y, childView.getScaleY(), 1.0f);
-        } else {
-            enterScaleYAnimator.setTarget(childView);
-            enterScaleYAnimator.setFloatValues(childView.getScaleY(), 1.0f);
-        }
-    }
-
-    private void setupAnimatorSet() {
-        if (mAnimatorSet == null) {
-            mAnimatorSet = new AnimatorSet();
-            ArrayList<Animator> tempAnimators = new ArrayList<Animator>();
-            tempAnimators.addAll(animators);
-            tempAnimators.add(enterScaleXAnimator);
-            tempAnimators.add(enterScaleYAnimator);
-            tempAnimators.add(exitScaleXAnimator);
-            tempAnimators.add(exitScaleYAnimator);
-            mAnimatorSet.playTogether(tempAnimators);
-            mAnimatorSet.setDuration(1000);
-            mAnimatorSet.addListener(animatorListener);
+        if (changeListener != null) {
+            changeListener.onBeginSelectGallery(enterView);
         }
     }
 
@@ -382,6 +341,9 @@ public class InfiniteGallery extends FrameLayout {
         @Override
         public void onAnimationEnd(Animator animation) {
             movePreloadView();
+            if (changeListener != null) {
+                changeListener.onEndSelectGallery(enterView);
+            }
         }
     };
 
@@ -389,29 +351,84 @@ public class InfiniteGallery extends FrameLayout {
         View childView;
         for (int i = 0; i < PREDICT_CHILD_COUNT; i++) {
             childView = getChildAt(i);
-            if (childView.getTranslationX() < -2 * posterWidth * mRatio) {
-                childView.setTranslationX(2 * posterWidth * mRatio);
+            if (childView.getTranslationX() < -2 * (itemWidth + itemMargin)) {
+                childView.setTranslationX(2 * (itemWidth + itemMargin));
                 ItemInfo info = (ItemInfo) childView.getTag(R.id.poster_info_tag);
                 int dataPosition = info.getDataPosition() - 1;
                 if (dataPosition < 0) {
-                    dataPosition += posterCount;
+                    dataPosition += itemCount;
                 }
                 info.setDataPosition(dataPosition);
                 if (factory != null) {
                     factory.bindView(dataPosition, childView);
                 }
-            } else if (childView.getTranslationX() > 2 * posterWidth * mRatio) {
-                childView.setTranslationX(-2 * posterWidth * mRatio);
+                if (mTransformer != null) {
+                    mTransformer.process(enterView, childView, 1);
+                }
+            } else if (childView.getTranslationX() > 2 * (itemWidth + itemMargin)) {
+                childView.setTranslationX(-2 * (itemWidth + itemMargin));
                 ItemInfo info = (ItemInfo) childView.getTag(R.id.poster_info_tag);
                 int dataPosition = info.getDataPosition() + 1;
-                if (dataPosition > (posterCount - 1)) {
-                    dataPosition -= posterCount;
+                if (dataPosition > (itemCount - 1)) {
+                    dataPosition -= itemCount;
                 }
                 info.setDataPosition(dataPosition);
                 if (factory != null) {
                     factory.bindView(dataPosition, childView);
+                }
+                if (mTransformer != null) {
+                    mTransformer.process(enterView, childView, -1);
                 }
             }
         }
+    }
+
+    public int getItemWidth() {
+        return itemWidth;
+    }
+
+    public int getItemHeight() {
+        return itemHeight;
+    }
+
+    @Override
+    public void onAnimationUpdate(ValueAnimator animation) {
+        View childView;
+        ItemInfo info;
+        float fraction = Float.parseFloat(animation.getAnimatedValue().toString());
+        for (int i = 0; i < PREDICT_CHILD_COUNT; i++) {
+            childView = getChildAt(i);
+            info = (ItemInfo) childView.getTag(R.id.poster_info_tag);
+            childView.setTranslationX(info.getAnimatorStartValue() +
+                    fraction * (info.getAnimatorEndValue() - info.getAnimatorStartValue()));
+        }
+        if (mTransformer != null) {
+            mTransformer.process(enterView, exitView, fraction * mScrollAnimator.getDirection());
+        }
+    }
+
+    public interface GalleryViewFactory {
+        View createView();
+
+        /**
+         * @param dataPosition the data index
+         * @param view         view to fill data
+         */
+        void bindView(int dataPosition, View view);
+    }
+
+    public interface GalleryChangeListener {
+        void onBeginSelectGallery(View itemView);
+
+        void onEndSelectGallery(View itemView);
+    }
+
+    public interface GalleryTransformer {
+        /**
+         * @param enterItemView view will scroll to center
+         * @param exitItemView  view will scroll out from center
+         * @param progress      between 0 and 1, scroll left &lt; 0, scroll right &gt; 0
+         */
+        void process(View enterItemView, View exitItemView, float progress);
     }
 }

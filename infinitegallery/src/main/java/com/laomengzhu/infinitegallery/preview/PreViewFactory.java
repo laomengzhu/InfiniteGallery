@@ -1,8 +1,11 @@
-package com.laomengzhu.infinitegallery;
+package com.laomengzhu.infinitegallery.preview;
 
 import android.content.Context;
 import android.graphics.Color;
 import android.view.View;
+
+import com.laomengzhu.infinitegallery.InfiniteGallery;
+
 
 /**
  * simple view factory to create ImageView

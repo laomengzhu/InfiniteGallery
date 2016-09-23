@@ -8,9 +8,9 @@
     <com.laomengzhu.infinitegallery.InfiniteGallery
         android:id="@+id/posterGallery1"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        app:poster_height="400dp"
-        app:poster_width="280dp"
+        android:layout_height="match_parent"
+        app:item_height="140dp"
+        app:item_width="215dp"
         android:layout_centerVertical="true"
         android:layout_centerHorizontal="true">
     </com.laomengzhu.infinitegallery.InfiniteGallery>

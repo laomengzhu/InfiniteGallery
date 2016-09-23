@@ -3,6 +3,8 @@ package com.laomengzhu.infinitegallery;
 public class ItemInfo {
     private int viewPosition;
     private int dataPosition;
+    private float animatorStartValue;
+    private float animatorEndValue;
 
     public ItemInfo(int viewPosition, int dataPosition) {
         super();
@@ -24,5 +26,21 @@ public class ItemInfo {
 
     public void setDataPosition(int dataPosition) {
         this.dataPosition = dataPosition;
+    }
+
+    public float getAnimatorStartValue() {
+        return animatorStartValue;
+    }
+
+    public void setAnimatorStartValue(float animatorStartValue) {
+        this.animatorStartValue = animatorStartValue;
+    }
+
+    public float getAnimatorEndValue() {
+        return animatorEndValue;
+    }
+
+    public void setAnimatorEndValue(float animatorEndValue) {
+        this.animatorEndValue = animatorEndValue;
     }
 }

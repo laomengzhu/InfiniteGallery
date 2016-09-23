@@ -2,8 +2,10 @@
 <resources>
 
     <declare-styleable name="InfiniteGallery">
-        <attr name="poster_width" format="dimension|reference" />
-        <attr name="poster_height" format="dimension|reference" />
+        <attr name="item_width" format="dimension|reference" />
+        <attr name="item_height" format="dimension|reference" />
+        <attr name="animatorDuration" format="integer" />
+        <attr name="itemMargin" format="dimension|reference" />
     </declare-styleable>
 
 </resources>

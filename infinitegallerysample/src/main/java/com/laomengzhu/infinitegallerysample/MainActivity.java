@@ -8,6 +8,7 @@ import android.widget.ImageView;
 import android.widget.ImageView.ScaleType;
 
 import com.laomengzhu.infinitegallery.InfiniteGallery;
+import com.laomengzhu.infinitegallery.transformer.ScaleTransformer;
 import com.nostra13.universalimageloader.cache.disc.impl.ext.LruDiskCache;
 import com.nostra13.universalimageloader.cache.disc.naming.Md5FileNameGenerator;
 import com.nostra13.universalimageloader.core.DisplayImageOptions;
@@ -47,7 +48,7 @@ public class MainActivity extends Activity {
         posterGallery.setGalleryViewFactory(new InfiniteGallery.GalleryViewFactory() {
 
             @Override
-            public View makeView() {
+            public View createView() {
                 ImageView imageView = new ImageView(MainActivity.this);
                 imageView.setScaleType(ScaleType.CENTER_CROP);
                 imageView.setBackgroundColor(Color.GRAY);
@@ -60,14 +61,15 @@ public class MainActivity extends Activity {
                 ImageLoader.getInstance().displayImage(urls.get(position), imageView);
             }
         });
-        posterGallery.setPosterCount(1);
-        posterGallery.postDelayed(new Runnable() {
-
-            @Override
-            public void run() {
-                posterGallery.setPosterCount(6);
-            }
-        }, 5000);
+        posterGallery.setTransformer(new ScaleTransformer(0.8f));
+        posterGallery.setItemCount(6);
+//        posterGallery.postDelayed(new Runnable() {
+//
+//            @Override
+//            public void run() {
+//                posterGallery.setItemCount(6);
+//            }
+//        }, 5000);
     }
 
     private void initImageLoader() throws IOException {
