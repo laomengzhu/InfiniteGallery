@@ -6,6 +6,7 @@
         <attr name="item_height" format="dimension|reference" />
         <attr name="animatorDuration" format="integer" />
         <attr name="itemMargin" format="dimension|reference" />
+        <attr name="autoSwitchInterval" format="integer" />
     </declare-styleable>
 
 </resources>
